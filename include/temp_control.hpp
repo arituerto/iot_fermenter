@@ -3,6 +3,22 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+enum ControlState
+{
+    off,
+    warming,
+    cooling,
+    error
+};
+
+struct fermenter_state_t
+{
+    time_t time;
+    float temp;
+    float ref_temp;
+    ControlState state;
+};
+
 struct temp_sensor_handle_t
 {
     OneWire oneWire;
@@ -14,18 +30,21 @@ struct temp_control_handle_t
 {
     float ref_temp;
     float th_temp;
-    float current_temp;
-    int relay_warming_pin;
-    int relay_cooling_pin;
+    int relay_a;
+    int relay_b;
+    int relay_c;
     bool warming_on;
     bool cooling_on;
+    bool mode_change;
 };
+
+fermenter_state_t get_fermenter_state(struct temp_sensor_handle_t *ts_handle, struct temp_control_handle_t *tc_handle);
+
+void print_sensor_address(DeviceAddress deviceAddress);
 
 void set_temp_th(struct temp_control_handle_t *tc_handle, float th_temp);
 
 void set_temp_ref(struct temp_control_handle_t *tc_handle, float ref_temp);
-
-void print_sensor_address(DeviceAddress deviceAddress);
 
 void temp_sensor_start(struct temp_sensor_handle_t *ts_handle, int temp_sensor_pin);
 

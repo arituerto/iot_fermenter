@@ -133,7 +133,7 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
 
     Serial.printf("Reference temperature:     % 8.3f C\n", tc_handle->ref_temp);
     Serial.printf("Current temperature:       % 8.3f C\n", current_temp);
-    Serial.printf("Temperature difference:    % 8.3f C\n", temp_diff);
+    Serial.printf("Temperature difference:    % 8.3f C (th: %5.2f C)\n", temp_diff, tc_handle->th_temp);
 
     if (abs(temp_diff) > abs(tc_handle->th_temp))
     {

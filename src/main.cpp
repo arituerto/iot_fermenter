@@ -24,13 +24,22 @@
 #define NETWORK_NAME "GregoriaNet"
 #define NETWORK_PSWD "HansTiberioNacioEnEl2018"
 
+IPAddress local_IP(10, 0, 0, 1);
+IPAddress gateway_IP(10, 0, 0, 1);
+IPAddress subnet(255, 255, 0, 0);
+
+volatile float server_ref_temp = 25.0;
+volatile float server_th_temp = 3.0;
+volatile float server_loop_time = 30.0;
+volatile bool server_fermenter_on = false;
+
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
   <title>IoT Fermenter Web Server</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html {font-family: Arial; display: inline-block; text-align: center;}
+    html {font-family: Helvetivca; display: inline-block; text-align: center;}
     h2 {font-size: 3.0rem;}
     p {font-size: 3.0rem;}
     body {max-width: 600px; margin:0px auto; padding-bottom: 25px;}
@@ -44,29 +53,43 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <h2>IoT Fermenter Web Server</h2>
-  <form action="/get">
-    Reference Temperature: <input type="number" name="ref_temp" step="0.01" min="10.0" max="65.0">
-    <input type="submit" value="Submit">
-  </form>
-  <form action="/get">
-    Temperature threshold: <input type="number" name="th_temp" step="0.01" min="0.5" max="15.0">
-    <input type="submit" value="Submit">
-  </form>
-  <form action="/get">
-    Loop time: <input type="number" name="loop_time" step="0.01" min="5.0" max="300.0">
-    <input type="submit" value="Submit">
-  </form>
+  %FORMPLACEHOLDER%
+<script>function toggleCheckbox(element) {
+  var xhr = new XMLHttpRequest();
+  if(element.checked){ xhr.open("GET", "/update?output="+element.id+"&state=1", true); }
+  else { xhr.open("GET", "/update?output="+element.id+"&state=0", true); }
+  xhr.send();
+}
+</script>
 </body>
 </html>
 )rawliteral";
 
-IPAddress local_IP(10, 0, 0, 1);
-IPAddress gateway_IP(10, 0, 0, 1);
-IPAddress subnet(255, 255, 0, 0);
+String float2string(float val)
+{
+  char output[5];
+  sprintf(output, "%.2f", val);
+  return output;
+}
 
-volatile float server_ref_temp = 25.0;
-volatile float server_th_temp = 3.0;
-volatile float server_loop_time = 30.0;
+String bool2string(bool val)
+{
+  return val ? "checked" : "";
+}
+
+String processor(const String &var)
+{
+  if (var == "FORMPLACEHOLDER")
+  {
+    String output = "";
+    output += "<form action=\"/get\"> Reference Temperature: <input type=\"number\" name=\"ref_temp\" step=\"0.01\" min=\"10.0\" max=\"65.0\" value=\"" + float2string(server_ref_temp) + "\"> <input type=\"submit\" value=\"Submit\"> </form>";
+    output += "<form action=\"/get\"> Temperature threshold: <input type=\"number\" name=\"th_temp\" step=\"0.01\" min=\"0.5\" max=\"15.0\" value=\"" + float2string(server_th_temp) + "\"> <input type=\"submit\" value=\"Submit\"> </form>";
+    output += "<form action=\"/get\"> Loop time: <input type=\"number\" name=\"loop_time\" step=\"0.01\" min=\"5.0\" max=\"300.0\" value=\"" + float2string(server_loop_time) + "\"> <input type=\"submit\" value=\"Submit\"> </form>";
+    output += "<h4>Fermenting!!</h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"fermenter_on\" " + bool2string(server_fermenter_on) + "><span class=\"slider\"></span></label>";
+    return output;
+  }
+  return "";
+};
 
 AsyncWebServer server(80);
 
@@ -89,7 +112,7 @@ void start()
   });
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", index_html);
+    request->send_P(200, "text/html", index_html, processor);
   });
 
   server.on("/get", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -124,11 +147,34 @@ void start()
       inputValue = NAN;
       inputParam = "none";
     }
-    Serial.printf("/GET %s - %s : %5.2f\n", inputParam, inputMessage, inputValue);
-    request->send(200, "text/html", index_html);
+    // Serial.printf("/GET %s - %s : %5.2f\n", inputParam, inputMessage, inputValue);
+    request->redirect("/");
+    // request->send(200, "text/html", "OK");
   });
-  
-  server.begin(); 
+
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String output;
+    String state;
+    if (request->hasParam("output") && request->hasParam("state"))
+    {
+      output = request->getParam("output")->value();
+      state = request->getParam("state")->value();
+      if (output == "fermenter_on")
+      {
+        server_fermenter_on = state.toInt();
+      }
+    }
+    else
+    {
+      output = "none";
+      state = "none";
+    }
+    // Serial.printf("/UPDATE %s: %s\n", output, state);
+    request->redirect("/");
+    // request->send(200, "text/plain", "OK");
+  });
+
+  server.begin();
 }
 
 void create_wifi(const char *network_name, const char *network_pswd)
@@ -177,10 +223,13 @@ void loop()
 {
   float ref_temp = server_ref_temp;
   set_temp_ref(&tc_handle, ref_temp);
+
   float th_temp = server_th_temp;
   set_temp_th(&tc_handle, th_temp);
 
   temp_control_run(&ts_handle, &tc_handle);
+
+  Serial.printf("server_fermenter_on = %s\n", server_fermenter_on ? "true" : "false");
 
   float loop_time = server_loop_time;
   sleep(loop_time);

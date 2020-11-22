@@ -58,4 +58,4 @@ void temp_control_set_cooling(struct temp_control_handle_t *tc_handle);
 
 void temp_control_set_off(struct temp_control_handle_t *tc_handle);
 
-void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_control_handle_t *tc_handle);
+void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_control_handle_t *tc_handle, bool control_on);

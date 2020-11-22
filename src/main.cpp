@@ -3,6 +3,10 @@
 #include "math.h"
 #include "ESPAsyncWebServer.h"
 #include "AsyncTCP.h"
+#include "esp32-hal-log.h"
+
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include "temp_control.hpp"
 
@@ -10,11 +14,11 @@
 // TODO: Define state struct to serialize
 // TODO: Define fermentation profile: time, temp pairs
 
-#define TEMP_SENSOR_PIN 25
+#define TEMP_SENSOR_PIN 33
 
-#define RELAY_A 32
-#define RELAY_B 33
-#define RELAY_C 14
+#define RELAY_A 19
+#define RELAY_B 18
+#define RELAY_C 21
 
 #define LOOP_TIME 5.0
 
@@ -126,7 +130,7 @@ String processor(const String &var)
     }
     else
     {
-      output += "<p>Peltier <b>OFF</b>/p>";
+      output += "<p>Peltier <b>OFF</b></p>";
     }
     output += "</div>";
     return output;
@@ -177,7 +181,7 @@ void start()
       inputValue = NAN;
       inputParam = "none";
     }
-    Serial.printf("/GET %s - %s : %5.2f\n", inputParam, inputMessage, inputValue);
+    ESP_LOGD("SERVER", "/GET %s - %s : %5.2f\n", inputParam, inputMessage, inputValue);
     request->redirect("/");
     // request->send(200, "text/html", "OK");
   });
@@ -203,7 +207,7 @@ void start()
       output = "none";
       state = "none";
     }
-    Serial.printf("/UPDATE %s: %s\n", output, state);
+    ESP_LOGD("SERVER", "/UPDATE %s: %s\n", output, state);
     request->redirect("/");
     // request->send(200, "text/plain", "OK");
   });
@@ -214,41 +218,44 @@ void start()
 void create_wifi(const char *network_name, const char *network_pswd)
 {
 
-  Serial.print("Setting soft-AP configuration ... ");
-  Serial.println(WiFi.softAPConfig(local_IP, gateway_IP, subnet) ? "Ready" : "Failed!");
+  ESP_LOGI("WIFI", "Setting soft-AP configuration ... ");
+  ESP_LOGI("WIFI", "%s", WiFi.softAPConfig(local_IP, gateway_IP, subnet) ? "Ready" : "Failed!");
 
-  Serial.print("Setting soft-AP ... ");
-  Serial.println(WiFi.softAP(network_name, network_pswd) ? "Ready" : "Failed!");
+  ESP_LOGI("WIFI", "Setting soft-AP ... ");
+  ESP_LOGI("WIFI", "%s", WiFi.softAP(network_name, network_pswd) ? "Ready" : "Failed!");
 
-  Serial.print("Soft-AP IP address = ");
-  Serial.println(WiFi.softAPIP());
+  ESP_LOGI("WIFI", "Soft-AP IP address = ");
+  ESP_LOGI("WIFI", "%s", WiFi.softAPIP());
 }
 
 void connect_wifi(const char *network_name, const char *network_pswd)
 {
   // Connect to Wifi
   WiFi.begin(network_name, network_pswd);
-  Serial.printf("Connecting to %s ", network_name);
+  ESP_LOGI("WIFI", "Connecting to %s ...", network_name);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(100);
-    Serial.print("*");
   }
   delay(100);
-  Serial.print(" DONE!\n");
+  ESP_LOGI("WIFI", " DONE!\n");
 
-  Serial.print("IoT fermenter IP: ");
-  Serial.println(WiFi.localIP());
+  ESP_LOGI("WIFI", "IoT fermenter IP: ");
+  ESP_LOGI("WIFI", "%s", WiFi.localIP());
 }
 
 void setup()
 {
+
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
+
   Serial.begin(115200);
 
-  // create_wifi(ESP32_NETWORK_NAME, ESP32_NETWORK_PSWD);
-  connect_wifi(NETWORK_NAME, NETWORK_PSWD);
   temp_sensor_start(&ts_handle, TEMP_SENSOR_PIN);
   temp_control_configure(&tc_handle);
+  
+  // create_wifi(ESP32_NETWORK_NAME, ESP32_NETWORK_PSWD);
+  connect_wifi(NETWORK_NAME, NETWORK_PSWD);
 
   start();
 }
@@ -261,12 +268,9 @@ void loop()
   float th_temp = server_th_temp;
   set_temp_th(&tc_handle, th_temp);
 
-  if (server_fermenter_on)
-  {
-    temp_control_run(&ts_handle, &tc_handle);
-  }
+  temp_control_run(&ts_handle, &tc_handle, server_fermenter_on);
 
-  Serial.printf("server_fermenter_on = %s\n", server_fermenter_on ? "true" : "false");
+  ESP_LOGD("LOOP", "server_fermenter_on = %s\n", server_fermenter_on ? "true" : "false");
 
   float loop_time = server_loop_time;
   sleep(loop_time);

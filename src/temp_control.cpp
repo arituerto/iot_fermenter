@@ -1,4 +1,8 @@
 
+/**
+ * @author: Alejandro Rituerto
+ **/
+
 #include "temp_control.hpp"
 
 #define PELTIER_MODE_CHANGE_DELAY 10.0
@@ -31,21 +35,15 @@ fermenter_state_t get_fermenter_state(struct temp_sensor_handle_t *ts_handle, st
 
 void print_sensor_address(DeviceAddress deviceAddress)
 {
-    for (uint8_t i = 0; i < 8; i++)
-    {
-        ESP_LOGI("TEMP_SENSOR", "Device adress: %02X %02X %02X %02X %02X %02X %02X %02X",
-                 deviceAddress[0],
-                 deviceAddress[1],
-                 deviceAddress[2],
-                 deviceAddress[3],
-                 deviceAddress[4],
-                 deviceAddress[5],
-                 deviceAddress[6],
-                 deviceAddress[7]);
-        // if (deviceAddress[i] < 16)
-        //     Serial.print("0");
-        // Serial.print(deviceAddress[i], HEX);
-    }
+    ESP_LOGI("TEMP_SENSOR", "Device adress: %02X %02X %02X %02X %02X %02X %02X %02X",
+             deviceAddress[0],
+             deviceAddress[1],
+             deviceAddress[2],
+             deviceAddress[3],
+             deviceAddress[4],
+             deviceAddress[5],
+             deviceAddress[6],
+             deviceAddress[7]);
 }
 
 void temp_sensor_start(struct temp_sensor_handle_t *ts_handle, int temp_sensor_pin)
@@ -141,19 +139,31 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
     ESP_LOGI("TEMP_CONTROL", "Reference temperature:     % 8.3f C", tc_handle->ref_temp);
     ESP_LOGI("TEMP_CONTROL", "Current temperature:       % 8.3f C", current_temp);
     ESP_LOGI("TEMP_CONTROL", "Temperature difference:    % 8.3f C (th: %5.2f C)", temp_diff, tc_handle->th_temp);
+    if ((tc_handle->cooling_on) & (!tc_handle->warming_on))
+    {
+        ESP_LOGI("TEMP_CONTROL", "COOLING");
+    }
+    else if ((!tc_handle->cooling_on) & (tc_handle->warming_on))
+    {
+        ESP_LOGI("TEMP_CONTROL", "WARMING");
+    }
+    else
+    {
+        ESP_LOGI("TEMP_CONTROL", "OFF");
+    }
 
     if (control_on)
     {
         if (tc_handle->cooling_on)
         {
-            if (current_temp < (tc_handle->ref_temp - tc_handle->th_temp))
+            if (current_temp < (tc_handle->ref_temp - 0.5 * tc_handle->th_temp))
             {
                 temp_control_set_off(tc_handle);
             }
         }
         else if (tc_handle->warming_on)
         {
-            if (current_temp > (tc_handle->ref_temp + tc_handle->th_temp))
+            if (current_temp > (tc_handle->ref_temp + 0.5 * tc_handle->th_temp))
             {
                 temp_control_set_off(tc_handle);
             }

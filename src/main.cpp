@@ -1,16 +1,18 @@
-#include <Arduino.h>
+/**
+ * @author: Alejandro Rituerto
+ **/
 #include <WiFi.h>
 #include "math.h"
 #include "ESPAsyncWebServer.h"
 #include "AsyncTCP.h"
 #include "esp32-hal-log.h"
+#include "mdns.h"
 
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
 #include "temp_control.hpp"
 
-// TODO: Add ESP_LOG and ESP_ERR. Use functions output for check success. handle setters
 // TODO: Define state struct to serialize
 // TODO: Define fermentation profile: time, temp pairs
 
@@ -139,6 +141,21 @@ String processor(const String &var)
   return "";
 };
 
+void start_mdns_service()
+{
+    //initialize mDNS service
+    esp_err_t err = mdns_init();
+    if (err) {
+        ESP_LOGE("MDNS", "MDNS Init failed: %d\n", err);
+        return;
+    }
+
+    //set hostname
+    mdns_hostname_set("iotfermenter");
+    //set default instance
+    mdns_instance_name_set("IoT Fermenter");
+}
+
 void start()
 {
   server.onNotFound([](AsyncWebServerRequest *request) {
@@ -241,13 +258,13 @@ void connect_wifi(const char *network_name, const char *network_pswd)
   ESP_LOGI("WIFI", " DONE!\n");
 
   ESP_LOGI("WIFI", "IoT fermenter IP: ");
-  ESP_LOGI("WIFI", "%s", WiFi.localIP());
+  ESP_LOGI("WIFI", "%c", WiFi.localIP().toString());
 }
 
 void setup()
 {
 
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
+  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
   Serial.begin(115200);
 
@@ -256,6 +273,8 @@ void setup()
   
   // create_wifi(ESP32_NETWORK_NAME, ESP32_NETWORK_PSWD);
   connect_wifi(NETWORK_NAME, NETWORK_PSWD);
+
+  // start_mdns_service();
 
   start();
 }

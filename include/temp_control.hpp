@@ -1,4 +1,6 @@
-
+/**
+ * @author: Alejandro Rituerto
+ **/
 
 #include <OneWire.h>
 #include <DallasTemperature.h>

@@ -2,6 +2,7 @@
  * @author: Alejandro Rituerto
  **/
 #include <WiFi.h>
+#include <SPIFFS.h>
 #include "math.h"
 #include "ESPAsyncWebServer.h"
 #include "AsyncTCP.h"
@@ -143,17 +144,18 @@ String processor(const String &var)
 
 void start_mdns_service()
 {
-    //initialize mDNS service
-    esp_err_t err = mdns_init();
-    if (err) {
-        ESP_LOGE("MDNS", "MDNS Init failed: %d\n", err);
-        return;
-    }
+  //initialize mDNS service
+  esp_err_t err = mdns_init();
+  if (err)
+  {
+    ESP_LOGE("MDNS", "MDNS Init failed: %d\n", err);
+    return;
+  }
 
-    //set hostname
-    mdns_hostname_set("iotfermenter");
-    //set default instance
-    mdns_instance_name_set("IoT Fermenter");
+  //set hostname
+  mdns_hostname_set("iotfermenter");
+  //set default instance
+  mdns_instance_name_set("IoT Fermenter");
 }
 
 void start()
@@ -268,9 +270,25 @@ void setup()
 
   Serial.begin(115200);
 
+  if (!SPIFFS.begin())
+  {
+    ESP_LOGE(TAG, "An Error has occurred while mounting SPIFFS");
+    start();
+  }
+  {
+    File root = SPIFFS.open("/");
+    File file = root.openNextFile();
+    while (file.available())
+    {
+      ESP_LOGI(TAG, "  %s", file.name());
+    }
+    file.close();
+    root.close();
+  }
+
   temp_sensor_start(&ts_handle, TEMP_SENSOR_PIN);
   temp_control_configure(&tc_handle);
-  
+
   // create_wifi(ESP32_NETWORK_NAME, ESP32_NETWORK_PSWD);
   connect_wifi(NETWORK_NAME, NETWORK_PSWD);
 

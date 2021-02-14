@@ -40,7 +40,9 @@ IPAddress subnet(255, 255, 0, 0);
 volatile float server_ref_temp = 25.0;
 volatile float server_th_temp = 3.0;
 volatile float server_loop_time = 30.0;
-volatile bool server_fermenter_on = false;
+volatile bool server_control_active = false;
+volatile bool server_warming_only = false;
+volatile bool server_cooling_only = false;
 
 // SERVER INSTANCE
 AsyncWebServer server(80);
@@ -59,43 +61,9 @@ struct temp_control_handle_t tc_handle = {
 // TEMP SENSOR INSTANCE
 struct temp_sensor_handle_t ts_handle;
 
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html>
-<head>
-  <title>IoT Fermenter Web Server</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    html {font-family: Helvetivca; display: inline-block; text-align: center;}
-    h1 {font-size: 3.0rem;}
-    h2 {font-size: 2.0rem;}
-    p {font-size: 1.0rem;}
-    body {max-width: 600px; margin:0px auto; padding-bottom: 25px;}
-    .switch {position: relative; display: inline-block; width: 120px; height: 68px} 
-    .switch input {display: none}
-    .slider {position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 6px}
-    .slider:before {position: absolute; content: ""; height: 52px; width: 52px; left: 8px; bottom: 8px; background-color: #fff; -webkit-transition: .4s; transition: .4s; border-radius: 3px}
-    input:checked+.slider {background-color: #b30000}
-    input:checked+.slider:before {-webkit-transform: translateX(52px); -ms-transform: translateX(52px); transform: translateX(52px)}
-  </style>
-</head>
-<body>
-  <h1>IoT Fermenter Web Server</h1>
-  %CURRENTSTATE%
-  %FORMPLACEHOLDER%
-<script>function toggleCheckbox(element) {
-  var xhr = new XMLHttpRequest();
-  if(element.checked){ xhr.open("GET", "/update?output="+element.id+"&state=1", true); }
-  else { xhr.open("GET", "/update?output="+element.id+"&state=0", true); }
-  xhr.send();
-}
-</script>
-</body>
-</html>
-)rawliteral";
-
 String float2string(float val)
 {
-  char output[5];
+  char output[20];
   sprintf(output, "%.2f", val);
   return output;
 }
@@ -104,43 +72,6 @@ String bool2string(bool val)
 {
   return val ? "checked" : "";
 }
-
-String processor(const String &var)
-{
-  if (var == "FORMPLACEHOLDER")
-  {
-    String output = "";
-    output += "<form action=\"/get\"> Reference Temperature: <input type=\"number\" name=\"ref_temp\" step=\"0.01\" min=\"10.0\" max=\"65.0\" value=\"" + float2string(server_ref_temp) + "\" size=\"20\"> <input type=\"submit\" value=\"Submit\"> </form>";
-    output += "<form action=\"/get\"> Temperature threshold: <input type=\"number\" name=\"th_temp\" step=\"0.01\" min=\"0.5\" max=\"15.0\" value=\"" + float2string(server_th_temp) + "\" size=\"20\"> <input type=\"submit\" value=\"Submit\"> </form>";
-    output += "<form action=\"/get\"> Loop time: <input type=\"number\" name=\"loop_time\" step=\"0.01\" min=\"5.0\" max=\"300.0\" value=\"" + float2string(server_loop_time) + "\" size=\"20\"> <input type=\"submit\" value=\"Submit\"> </form>";
-    output += "<h4>Fermenting!!</h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"fermenter_on\" " + bool2string(server_fermenter_on) + "><span class=\"slider\"></span></label>";
-    return output;
-  }
-  else if (var == "CURRENTSTATE")
-  {
-    String output = "";
-    output += "<div style=\"border: 1px solid black\">";
-    output += "<h1>Current state:</h1>";
-    output += "<p><b>Temperature</b>: " + float2string(temp_get(&ts_handle)) + "</p>";
-    output += "<p><b>Ref. Temperature</b>: " + float2string(tc_handle.ref_temp) + "</p>";
-    if (tc_handle.warming_on)
-    {
-      output += "<p>Peltier <b>WARMING</b></p>";
-    }
-    else if (tc_handle.cooling_on)
-    {
-      output += "<p>Peltier <b>COOLING</b></p>";
-    }
-    else
-    {
-      output += "<p>Peltier <b>OFF</b></p>";
-    }
-    output += "</div>";
-    return output;
-  }
-
-  return "";
-};
 
 void start_mdns_service()
 {
@@ -165,13 +96,51 @@ void start()
   });
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", index_html, processor);
+    request->send(SPIFFS, "/index.html", "text/html");
+    ESP_LOGD("SERVER", "GET /");
   });
 
-  server.on("/get", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/js/bootstrap.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(SPIFFS, "/js/bootstrap.bundle.min.js", "text/javascript");
+    ESP_LOGD("SERVER", "GET /js/bootstrap.bundle.min.js");
+  });
+
+  server.on("/js/jquery-3.5.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(SPIFFS, "/js/jquery-3.5.1.min.js", "text/javascript");
+    ESP_LOGD("SERVER", "GET /js/jquery-3.5.1.min.js");
+  });
+
+  server.on("/css/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(SPIFFS, "/css/bootstrap.min.css", "text/css");
+    ESP_LOGD("SERVER", "GET /css/bootstrap.min.css");
+  });
+
+  server.on("/current_temp", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", float2string(temp_get(&ts_handle)));
+    ESP_LOGD("SERVER", "GET /current_temp");
+  });
+
+  server.on("/ref_temp", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", float2string(server_ref_temp));
+    ESP_LOGD("SERVER", "GET /ref_temp");
+  });
+
+  server.on("/th_temp", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", float2string(server_th_temp));
+    ESP_LOGD("SERVER", "GET /th_temp");
+  });
+
+  server.on("/loop_time", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", float2string(server_loop_time));
+    ESP_LOGD("SERVER", "GET /loop_time");
+  });
+
+  server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request) {
     String inputMessage;
     float inputValue;
     String inputParam;
+
+    ESP_LOGD("SERVER", "GET /set call received!");
 
     if (request->hasParam("ref_temp"))
     {
@@ -179,30 +148,26 @@ void start()
       inputValue = atof(inputMessage.c_str());
       server_ref_temp = inputValue;
       inputParam = "ref_temp";
+      ESP_LOGD("SERVER", "GET /set %s - %s : %5.2f", inputParam, inputMessage, inputValue);
     }
-    else if (request->hasParam("th_temp"))
+    if (request->hasParam("th_temp"))
     {
       inputMessage = request->getParam("th_temp")->value();
       inputValue = atof(inputMessage.c_str());
       server_th_temp = inputValue;
       inputParam = "th_temp";
+      ESP_LOGD("SERVER", "GET /set %s - %s : %5.2f", inputParam, inputMessage, inputValue);
     }
-    else if (request->hasParam("loop_time"))
+    if (request->hasParam("loop_time"))
     {
       inputMessage = request->getParam("loop_time")->value();
       inputValue = atof(inputMessage.c_str());
       server_loop_time = inputValue;
       inputParam = "loop_time";
+      ESP_LOGD("SERVER", "GET /set %s - %s : %5.2f", inputParam, inputMessage, inputValue);
     }
-    else
-    {
-      inputMessage = "No message sent";
-      inputValue = NAN;
-      inputParam = "none";
-    }
-    ESP_LOGD("SERVER", "/GET %s - %s : %5.2f\n", inputParam, inputMessage, inputValue);
+    // request->send(200);
     request->redirect("/");
-    // request->send(200, "text/html", "OK");
   });
 
   server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -214,8 +179,8 @@ void start()
       state = request->getParam("state")->value();
       if (output == "fermenter_on")
       {
-        server_fermenter_on = state.toInt();
-        if (server_fermenter_on == 0)
+        server_control_active = state.toInt();
+        if (server_control_active == 0)
         {
           temp_control_set_off(&tc_handle);
         }
@@ -226,9 +191,8 @@ void start()
       output = "none";
       state = "none";
     }
-    ESP_LOGD("SERVER", "/UPDATE %s: %s\n", output, state);
-    request->redirect("/");
-    // request->send(200, "text/plain", "OK");
+    ESP_LOGD("SERVER", "GET /update %s: %s\n", output, state);
+    request->send(200);
   });
 
   server.begin();
@@ -266,21 +230,21 @@ void connect_wifi(const char *network_name, const char *network_pswd)
 void setup()
 {
 
-  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
-
   Serial.begin(115200);
 
   if (!SPIFFS.begin())
   {
     ESP_LOGE(TAG, "An Error has occurred while mounting SPIFFS");
-    start();
+    return;
   }
   {
+    ESP_LOGI(TAG, "FILE LIST:");
     File root = SPIFFS.open("/");
     File file = root.openNextFile();
-    while (file.available())
+    while (file)
     {
       ESP_LOGI(TAG, "  %s", file.name());
+      file = root.openNextFile();
     }
     file.close();
     root.close();
@@ -305,9 +269,9 @@ void loop()
   float th_temp = server_th_temp;
   set_temp_th(&tc_handle, th_temp);
 
-  temp_control_run(&ts_handle, &tc_handle, server_fermenter_on);
+  temp_control_run(&ts_handle, &tc_handle, server_control_active);
 
-  ESP_LOGD("LOOP", "server_fermenter_on = %s\n", server_fermenter_on ? "true" : "false");
+  ESP_LOGD("LOOP", "server_control_active = %s\n", server_control_active ? "true" : "false");
 
   float loop_time = server_loop_time;
   sleep(loop_time);

@@ -1,0 +1,166 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <meta content="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="/js/jquery-3.5.1.min.js"></script>
+    <script src="/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="/css/bootstrap.min.css">
+    <style>
+        body {
+            min-width: 310px;
+            max-width: 800px;
+            height: 400px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            font-family: Arial;
+            font-size: 2.5rem;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>IoT Fermenter</h2>
+
+    <div class="container-fluid">
+
+        <div class="row">
+
+            <div class="col-md-6">
+                <h4>Current state:</h4>
+                <table class="table table-striped">
+                    <tr>
+                        <th>Temperature Current</th>
+                        <td id="current_temp_val"></td>
+                    </tr>
+                    <tr>
+                        <th>Temperature Reference</th>
+                        <td id="ref_temp_val"></td>
+                    </tr>
+                    <tr>
+                        <th>Temperature threshold</td>
+                        <td id="th_temp_val"></td>
+                    </tr>
+                    <tr>
+                        <th>Loop time</td>
+                        <td id="loop_time_val"></td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="col-md-6">
+                <h4>Configuration:</h4>
+                <div class="row">
+                    <form id="config_form" action="/set" method="get">
+                        <label for="ref_temp">Temperatuer Reference:</label><br>
+                        <input type="number" id="ref_temp_input" name="ref_temp" step="0.1" min="5.0" max="65.0"><br>
+                        <label for="th_temp">Temperatuer Threshold:</label><br>
+                        <input type="number" id="th_temp_input" name="th_temp" step="0.1" min="0.5" max="15.0"><br>
+                        <label for="loop_time">Loop Time:</label><br>
+                        <input type="number" id="loop_time_input" name="loop_time" step="0.1" min="3.0" max="300.0"><br>
+                        <input type="submit" value="Submit">
+                    </form>
+                </div>
+                <div class="row">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="form_control_active" />
+                        <label class="form-check-label" for="form_control_active">Activate Temperature
+                            Control</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="form_warming_only" />
+                        <label class="form-check-label" for="form_warming_only">Only Warming</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="form_cooling_only" />
+                        <label class="form-check-label" for="form_cooling_only">Only Cooling</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+
+            <div class="col-md-12">HERE THE PLOT</div>
+
+        </div>
+    </div>
+</body>
+
+<script>
+
+    function activateFermenter(element) {
+        var xhr = new XMLHttpRequest();
+        if (element.checked) {
+            xhr.open("GET", "/update?output=" + element.id + "&state=1", true);
+        }
+        else {
+            xhr.open("GET", "/update?output=" + element.id + "&state=0", true);
+        }
+        xhr.send();
+    };
+
+    function getCurrentTemp() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                document.getElementById("current_temp_val").innerHTML = xhttp.responseText;
+            }
+        };
+        xhttp.open("GET", "/current_temp", true);
+        xhttp.send();
+    };
+
+    function getRefTemp() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                var x = xhttp.responseText;
+                document.getElementById("ref_temp_val").innerHTML = x;
+                document.getElementById("ref_temp_input").setAttribute("value", x);
+            }
+        };
+        xhttp.open("GET", "/ref_temp", true);
+        xhttp.send();
+    };
+
+    function getThTemp() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                var x = xhttp.responseText;
+                document.getElementById("th_temp_val").innerHTML = x;
+                document.getElementById("th_temp_input").setAttribute("value", x);
+            }
+        };
+        xhttp.open("GET", "/th_temp", true);
+        xhttp.send();
+    };
+
+    function getLoopTime() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                var x = xhttp.responseText;
+                document.getElementById("loop_time_val").innerHTML = x;
+                document.getElementById("loop_time_input").setAttribute("value", x);
+            }
+        };
+        xhttp.open("GET", "/loop_time", true);
+        xhttp.send();
+    };
+
+    getCurrentTemp();
+    getRefTemp();
+    getThTemp();
+    getLoopTime();
+
+    setInterval(function () { getCurrentTemp() }, 30000);
+
+</script>
+
+</html>

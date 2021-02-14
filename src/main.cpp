@@ -49,13 +49,17 @@ AsyncWebServer server(80);
 
 // TEMP CONTROL INSTANCE
 struct temp_control_handle_t tc_handle = {
+
     .ref_temp = 43.0,
     .th_temp = 3.0,
+    .warming_only = false,
+    .cooling_only = false,
+    .control_on = false,
     .relay_a = RELAY_A,
     .relay_b = RELAY_B,
     .relay_c = RELAY_C,
-    .warming_on = false,
-    .cooling_on = false,
+    .warming_active = false,
+    .cooling_active = false,
     .mode_change = false};
 
 // TEMP SENSOR INSTANCE
@@ -135,6 +139,54 @@ void start()
     ESP_LOGD("SERVER", "GET /loop_time");
   });
 
+  server.on("/activate", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (server_control_active)
+    {
+      request->send(200, "text/plain", "true");
+    }
+    else
+    {
+      request->send(200, "text/plain", "");
+    }
+    ESP_LOGD("SERVER", "GET /activate");
+  });
+
+  server.on("/warming_only", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (server_warming_only)
+    {
+      request->send(200, "text/plain", "true");
+    }
+    else
+    {
+      request->send(200, "text/plain", "");
+    }
+    ESP_LOGD("SERVER", "GET /warming_only");
+  });
+
+  server.on("/cooling_only", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (server_cooling_only)
+    {
+      request->send(200, "text/plain", "true");
+    }
+    else
+    {
+      request->send(200, "text/plain", "");
+    }
+    ESP_LOGD("SERVER", "GET /cooling_only");
+  });
+
+  server.on("/control", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (server_control_active)
+    {
+      request->send(200, "text/plain", "true");
+    }
+    else
+    {
+      request->send(200, "text/plain", "");
+    }
+    ESP_LOGD("SERVER", "GET /control");
+  });
+
   server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request) {
     String inputMessage;
     float inputValue;
@@ -166,32 +218,22 @@ void start()
       inputParam = "loop_time";
       ESP_LOGD("SERVER", "GET /set %s - %s : %5.2f", inputParam, inputMessage, inputValue);
     }
+    if (request->hasParam("cooling_only"))
+    {
+      server_cooling_only = !server_cooling_only;
+      ESP_LOGD("SERVER", "GET /set cooling_only");
+    }
+    if (request->hasParam("warming_only"))
+    {
+      server_warming_only = !server_warming_only;
+      ESP_LOGD("SERVER", "GET /set warming_only");
+    }
+    if (request->hasParam("control"))
+    {
+      server_control_active = !server_control_active;
+      ESP_LOGD("SERVER", "GET /set control");
+    }
     // request->send(200);
-    request->redirect("/");
-  });
-
-  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String output;
-    String state;
-    if (request->hasParam("output") && request->hasParam("state"))
-    {
-      output = request->getParam("output")->value();
-      state = request->getParam("state")->value();
-      if (output == "fermenter_on")
-      {
-        server_control_active = state.toInt();
-        if (server_control_active == 0)
-        {
-          temp_control_set_off(&tc_handle);
-        }
-      }
-    }
-    else
-    {
-      output = "none";
-      state = "none";
-    }
-    ESP_LOGD("SERVER", "GET /update %s: %s\n", output, state);
     request->send(200);
   });
 
@@ -263,15 +305,13 @@ void setup()
 
 void loop()
 {
-  float ref_temp = server_ref_temp;
-  set_temp_ref(&tc_handle, ref_temp);
+  set_temp_ref(&tc_handle, server_ref_temp);
+  set_temp_th(&tc_handle, server_th_temp);
+  set_cooling_only(&tc_handle, server_cooling_only);
+  set_warming_only(&tc_handle, server_warming_only);
+  set_control(&tc_handle, server_control_active);
 
-  float th_temp = server_th_temp;
-  set_temp_th(&tc_handle, th_temp);
-
-  temp_control_run(&ts_handle, &tc_handle, server_control_active);
-
-  ESP_LOGD("LOOP", "server_control_active = %s\n", server_control_active ? "true" : "false");
+  temp_control_run(&ts_handle, &tc_handle);
 
   float loop_time = server_loop_time;
   sleep(loop_time);

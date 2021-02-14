@@ -13,15 +13,15 @@ fermenter_state_t get_fermenter_state(struct temp_sensor_handle_t *ts_handle, st
     time(&output.time);
     output.temp = temp_get(ts_handle);
     output.ref_temp = tc_handle->ref_temp;
-    if ((tc_handle->cooling_on) & (tc_handle->warming_on))
+    if ((tc_handle->cooling_active) & (tc_handle->warming_active))
     {
         output.state = error;
     }
-    else if (tc_handle->warming_on)
+    else if (tc_handle->warming_active)
     {
         output.state = warming;
     }
-    else if (tc_handle->warming_on)
+    else if (tc_handle->warming_active)
     {
         output.state = cooling;
     }
@@ -96,12 +96,25 @@ void set_temp_ref(struct temp_control_handle_t *tc_handle, float ref_temp)
     tc_handle->ref_temp = ref_temp;
 }
 
+void set_control(struct temp_control_handle_t *tc_handle, bool control)
+{
+    if (tc_handle->control_on != control)
+    {
+        ESP_LOGI("TEMP_CONTROL", "Control change!");
+    }
+    tc_handle->control_on = control;
+}
+
+void set_warming_only(struct temp_control_handle_t *tc_handle, bool warming_only) { tc_handle->warming_only = warming_only; }
+
+void set_cooling_only(struct temp_control_handle_t *tc_handle, bool cooling_only) { tc_handle->cooling_only = cooling_only; }
+
 void temp_control_set_warming(struct temp_control_handle_t *tc_handle)
 {
-    if (!tc_handle->warming_on)
+    if (!tc_handle->warming_active)
     {
-        tc_handle->cooling_on = false;
-        tc_handle->warming_on = true;
+        tc_handle->cooling_active = false;
+        tc_handle->warming_active = true;
         tc_handle->mode_change = true;
         ESP_LOGI("TEMP_CONTROL", "CONTROL SET TO WARMING");
     }
@@ -109,10 +122,10 @@ void temp_control_set_warming(struct temp_control_handle_t *tc_handle)
 
 void temp_control_set_cooling(struct temp_control_handle_t *tc_handle)
 {
-    if (!tc_handle->cooling_on)
+    if (!tc_handle->cooling_active)
     {
-        tc_handle->warming_on = false;
-        tc_handle->cooling_on = true;
+        tc_handle->warming_active = false;
+        tc_handle->cooling_active = true;
         tc_handle->mode_change = true;
         ESP_LOGI("TEMP_CONTROL", "CONTROL SET TO COOLING");
     }
@@ -120,30 +133,34 @@ void temp_control_set_cooling(struct temp_control_handle_t *tc_handle)
 
 void temp_control_set_off(struct temp_control_handle_t *tc_handle)
 {
-    if ((tc_handle->warming_on) || (tc_handle->cooling_on))
+    if ((tc_handle->warming_active) || (tc_handle->cooling_active))
     {
-        tc_handle->warming_on = false;
-        tc_handle->cooling_on = false;
+        tc_handle->warming_active = false;
+        tc_handle->cooling_active = false;
         tc_handle->mode_change = true;
         ESP_LOGI("TEMP_CONTROL", "CONTROL SET OFF");
     }
 }
 
-void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_control_handle_t *tc_handle, bool control_on)
+void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_control_handle_t *tc_handle)
 {
     // GET TEMPERATURES
     float current_temp = temp_get(ts_handle);
 
     float temp_diff = tc_handle->ref_temp - current_temp;
 
+    if (tc_handle->control_on)
+    {
+        ESP_LOGI("TEMP_CONTROL", "TEMP. CONTROL ACTIVE");
+    }
     ESP_LOGI("TEMP_CONTROL", "Reference temperature:     % 8.3f C", tc_handle->ref_temp);
     ESP_LOGI("TEMP_CONTROL", "Current temperature:       % 8.3f C", current_temp);
     ESP_LOGI("TEMP_CONTROL", "Temperature difference:    % 8.3f C (th: %5.2f C)", temp_diff, tc_handle->th_temp);
-    if ((tc_handle->cooling_on) & (!tc_handle->warming_on))
+    if ((tc_handle->cooling_active) & (!tc_handle->warming_active))
     {
         ESP_LOGI("TEMP_CONTROL", "COOLING");
     }
-    else if ((!tc_handle->cooling_on) & (tc_handle->warming_on))
+    else if ((!tc_handle->cooling_active) & (tc_handle->warming_active))
     {
         ESP_LOGI("TEMP_CONTROL", "WARMING");
     }
@@ -152,16 +169,26 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
         ESP_LOGI("TEMP_CONTROL", "OFF");
     }
 
-    if (control_on)
+    if (tc_handle->cooling_only)
     {
-        if (tc_handle->cooling_on)
+        ESP_LOGI("TEMP_CONTROL", "COOLING ONLY");
+    }
+
+    if (tc_handle->warming_only)
+    {
+        ESP_LOGI("TEMP_CONTROL", "WARMING ONLY");
+    }
+
+    if (tc_handle->control_on)
+    {
+        if (tc_handle->cooling_active)
         {
             if (current_temp < (tc_handle->ref_temp - 0.5 * tc_handle->th_temp))
             {
                 temp_control_set_off(tc_handle);
             }
         }
-        else if (tc_handle->warming_on)
+        else if (tc_handle->warming_active)
         {
             if (current_temp > (tc_handle->ref_temp + 0.5 * tc_handle->th_temp))
             {
@@ -174,11 +201,17 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
             {
                 if (temp_diff > 0.0)
                 {
-                    temp_control_set_warming(tc_handle);
+                    if (!tc_handle->cooling_only)
+                    {
+                        temp_control_set_warming(tc_handle);
+                    }
                 }
                 else
                 {
-                    temp_control_set_cooling(tc_handle);
+                    if (!tc_handle->warming_only)
+                    {
+                        temp_control_set_cooling(tc_handle);
+                    }
                 }
             }
             else
@@ -186,6 +219,10 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
                 temp_control_set_off(tc_handle);
             }
         }
+    }
+    else
+    {
+        temp_control_set_off(tc_handle);
     }
 
     if (tc_handle->mode_change)
@@ -198,13 +235,13 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
 
         sleep(PELTIER_MODE_CHANGE_DELAY);
 
-        if (tc_handle->warming_on & tc_handle->cooling_on)
+        if (tc_handle->warming_active & tc_handle->cooling_active)
         {
             ESP_LOGI("TEMP_CONTROL", "Temperature control error - warming and cooling ON!");
         }
         else
         {
-            if (tc_handle->warming_on)
+            if (tc_handle->warming_active)
             {
                 ESP_LOGI("TEMP_CONTROL", "Turning ON warming");
                 digitalWrite(tc_handle->relay_a, LOW);
@@ -212,7 +249,7 @@ void temp_control_run(struct temp_sensor_handle_t *ts_handle, struct temp_contro
                 digitalWrite(tc_handle->relay_c, HIGH);
                 ESP_LOGI("TEMP_CONTROL", " DONE");
             }
-            else if (tc_handle->cooling_on)
+            else if (tc_handle->cooling_active)
             {
                 ESP_LOGI("TEMP_CONTROL", "Turning ON cooling");
                 digitalWrite(tc_handle->relay_a, HIGH);
